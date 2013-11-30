@@ -36,6 +36,8 @@ type Gor struct {
 //so I delete it
 //In face the metaEoF should be the second "---"
 var metaEOF string = "{% include JB/setup %}"
+var metaEOF2 string = "---"
+var metaEOF2_n int = 0
 
 //When this md isn't Blog will return errNoMeta
 var errNoMeta = errors.New("Don't find meta data or Have been gor's blog")
@@ -82,13 +84,15 @@ var myJekyll *Jekyll
 var myGor *Gor
 
 func main() {
+	path := "_posts"
 	if len(os.Args) > 1 {
-		myJekyll = NewJekyll()
-		myGor = NewGor()
-		err := Tree(os.Args[1], 1)
-		if err != nil {
-			panic(err)
-		}
+		path = os.Args[1]
+	}
+	myJekyll = NewJekyll()
+	myGor = NewGor()
+	err := Tree(path, 1)
+	if err != nil {
+		panic(err)
 	}
 	fmt.Println("Finsh")
 
@@ -97,10 +101,12 @@ func main() {
 //list files under the dir
 func Tree(dirname string, curHier int) error {
 	dirAbs, err := filepath.Abs(dirname)
+	fmt.Println(dirAbs)
 	if err != nil {
 		return err
 	}
 	fileInfos, err := ioutil.ReadDir(dirAbs)
+	fmt.Println(fileInfos)
 	if err != nil {
 		return err
 	}
@@ -110,9 +116,9 @@ func Tree(dirname string, curHier int) error {
 			Tree(filepath.Join(dirAbs, fileInfo.Name()), curHier+1)
 		} else {
 			b := []byte(fileInfo.Name())
-			//fmt.Println(fileInfo.Name())
-			matched, _ := regexp.Match("[.](md|html)$", b)
-			//fmt.Println(matched)
+			fmt.Println(fileInfo.Name())
+			matched, _ := regexp.Match("[.](md|html|markdown)$", b)
+			fmt.Println(matched)
 			if matched {
 				err := Dealwith(filepath.Join(dirAbs, fileInfo.Name()))
 				if err != nil {
@@ -121,7 +127,6 @@ func Tree(dirname string, curHier int) error {
 					} else {
 						return err
 					}
-
 				}
 			}
 
@@ -150,7 +155,10 @@ func Dealwith(fpath string) error {
 	}
 	//Close the src file ,operate the tmp file
 
-	defer fout.Close()
+	defer func() {
+		fout.Close()
+		os.Remove(fout.Name())
+	}()
 
 	// let jekyll's meta data to gor's meta data
 	content, _ := ioutil.ReadFile(file.Name())
@@ -165,13 +173,27 @@ func Dealwith(fpath string) error {
 	//	file.Write()
 	writeFile(fout, lines)
 
-	content,_ = ioutil.ReadFile(fout.Name())
-	err = ioutil.WriteFile(file.Name(), content, 0666)
-	if err != nil{
+	content, _ = ioutil.ReadFile(fout.Name())
+	fns := strings.SplitN(file.Name(), "-", 4)
+
+	err = os.Mkdir("posts", 0666)
+	if err != nil {
+		fmt.Println(err)
+		//return err
+	}
+
+	fnew := "posts/" + fns[3]
+	ftmp1 := strings.SplitN(fnew, ".", 2)
+	if ftmp1[1] == "markdown" {
+		fnew = ftmp1[0] + ".md"
+	}
+	fmt.Println(fnew)
+
+	err = ioutil.WriteFile(fnew, content, 0666)
+	if err != nil {
 		return err
 	}
 	fmt.Println("Success")
-	os.Remove(fout.Name())
 
 	return nil
 }
@@ -183,7 +205,19 @@ func parseJekyll(lines []string) (int, error) {
 		if strings.Contains(line, metaEOF) {
 			return i, nil
 		}
-		meta := strings.Split(line, ":")
+		if strings.Contains(line, metaEOF2) {
+			if metaEOF2_n == 1 {
+				metaEOF2_n = 0
+				return i, nil
+			}
+			metaEOF2_n = metaEOF2_n + 1
+		}
+
+		meta := strings.SplitN(line, ":", 2)
+		if len(meta) != 2 {
+			continue
+		}
+		//fmt.Println(meta)
 		switch {
 		case strings.Contains(meta[0], "layout"):
 			myJekyll.layout = meta[1]
@@ -197,7 +231,7 @@ func parseJekyll(lines []string) (int, error) {
 			meta[1] = strings.TrimSpace(meta[1])
 			meta[1] = strings.TrimLeft(meta[1], "[")
 			meta[1] = strings.TrimRight(meta[1], "]")
-			//fmt.Println(meta[1])
+			fmt.Println(meta[1])
 			data := strings.Split(meta[1], ",")
 			myJekyll.tags = data
 		}
@@ -213,7 +247,7 @@ func jekyllToGor(filename string) {
 	myGor.tags = myJekyll.tags
 	myGor.tagline = myJekyll.tagline
 	myGor.getDate(filename)
-	//fmt.Println(myGor)
+	fmt.Println(myGor)
 }
 
 //There use refelect should be more pithy
